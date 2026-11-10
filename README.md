@@ -6,6 +6,7 @@ App web instalable (PWA) para apuntar tareas dictando, con prioridades y una pan
 - 🧠 **Entiende prioridad y fecha** de lo que dices: *"revisar curva horno 2 alta para el viernes"*.
 - 📋 **Hoy**: vencidas → foco del día (vence hoy + prioridad alta) → próximos 7 días → resto.
 - ✈️ Funciona **sin conexión**. Los datos se guardan **solo en el móvil** (localStorage).
+- 🔔 **Aviso diario** (menú `···` → *Activar aviso diario*): resumen en una notificación una vez al día entre 7:00 y 21:00. Solo en Chrome de Android con la app instalada; Android decide la hora exacta.
 - 💾 Copia de seguridad: exportar/importar JSON desde el menú `···`.
 
 ## Cómo dictar

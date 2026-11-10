@@ -16,6 +16,14 @@ function cargar() {
 }
 function guardar() {
   localStorage.setItem(CLAVE, JSON.stringify(tareas));
+  copiaParaAviso();
+}
+// El service worker no puede leer localStorage: le dejamos una copia en la caché
+function copiaParaAviso() {
+  if (!('caches' in window)) return;
+  caches.open('mis-tareas-datos')
+    .then(c => c.put('datos/tareas.json', new Response(JSON.stringify(tareas), { headers: { 'Content-Type': 'application/json' } })))
+    .catch(() => {});
 }
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const hoyStr = () => Parser.ymd(new Date());
@@ -266,8 +274,51 @@ document.querySelectorAll('dialog').forEach(d => d.addEventListener('click', e =
 // Refrescar al volver a la app (cambia el día, vencidas, etc.)
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { tareas = cargar(); render(); } });
 
+// ---------- Aviso diario (Periodic Background Sync, Chrome Android con la app instalada) ----------
+const TAG_AVISO = 'resumen-diario';
+async function estadoAviso() {
+  const el = $('#aviso-estado'), btn = $('#m-aviso');
+  if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+    el.textContent = 'Este navegador no permite avisos.'; btn.hidden = true; return;
+  }
+  const reg = await navigator.serviceWorker.ready;
+  if (!('periodicSync' in reg)) {
+    el.textContent = 'Tu navegador no permite avisos en segundo plano (funciona en Chrome de Android con la app instalada).';
+    btn.hidden = true; return;
+  }
+  const tags = await reg.periodicSync.getTags().catch(() => []);
+  const activo = tags.includes(TAG_AVISO) && Notification.permission === 'granted';
+  btn.textContent = activo ? 'Probar aviso ahora' : 'Activar aviso diario';
+  el.textContent = activo
+    ? 'Activado: Android te avisará una vez al día entre las 7:00 y las 21:00, en cuanto despierte la app (no hay hora fija).'
+    : 'Te manda un resumen de vencidas, foco del día y próximos 7 días una vez al día.';
+}
+async function activarAviso() {
+  const permiso = await Notification.requestPermission();
+  if (permiso !== 'granted') { toast('Sin permiso de notificaciones'); return; }
+  const reg = await navigator.serviceWorker.ready;
+  const st = await navigator.permissions.query({ name: 'periodic-background-sync' }).catch(() => null);
+  if (st && st.state !== 'granted') {
+    toast('Instala la app primero (⋮ → Instalar aplicación) y ábrela desde el icono');
+    return;
+  }
+  try {
+    await reg.periodicSync.register(TAG_AVISO, { minInterval: 6 * 60 * 60 * 1000 });
+  } catch {
+    toast('Android no ha permitido el aviso. Abre la app desde el icono instalado y reintenta');
+    return;
+  }
+  copiaParaAviso();
+  reg.active?.postMessage('probar-aviso');
+  toast('Aviso diario activado ✓');
+  estadoAviso();
+}
+$('#m-aviso').addEventListener('click', activarAviso);
+$('#btn-menu').addEventListener('click', estadoAviso);
+
 // ---------- Arranque ----------
 render();
+copiaParaAviso();
 if (new URLSearchParams(location.search).has('nueva')) $('#entrada').focus();
 navigator.storage?.persist?.();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
