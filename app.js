@@ -274,45 +274,51 @@ document.querySelectorAll('dialog').forEach(d => d.addEventListener('click', e =
 // Refrescar al volver a la app (cambia el día, vencidas, etc.)
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { tareas = cargar(); render(); } });
 
-// ---------- Aviso diario (Periodic Background Sync, Chrome Android con la app instalada) ----------
-const TAG_AVISO = 'resumen-diario';
+// ---------- Aviso a las 8:00 (Web Push: GitHub Actions envía un toque y la app monta el resumen) ----------
+const VAPID_PUBLICA = 'BKIru1dn2qb7nzSBNHda-cCQRHbzsikBoADodr1EFTSqVHB_pXnXhlONJ07UEKKxIz7sEqcIdN7pZO96TSYaofM';
+const b64aBytes = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); s += '='.repeat((4 - s.length % 4) % 4); return Uint8Array.from(atob(s), c => c.charCodeAt(0)); };
+
 async function estadoAviso() {
-  const el = $('#aviso-estado'), btn = $('#m-aviso');
-  if (!('serviceWorker' in navigator) || !('Notification' in window)) {
-    el.textContent = 'Este navegador no permite avisos.'; btn.hidden = true; return;
-  }
-  const reg = await navigator.serviceWorker.ready;
-  if (!('periodicSync' in reg)) {
-    el.textContent = 'Tu navegador no permite avisos en segundo plano (funciona en Chrome de Android con la app instalada).';
+  const el = $('#aviso-estado'), btn = $('#m-aviso'), caja = $('#aviso-codigo');
+  caja.hidden = true;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    el.textContent = 'Este navegador no permite avisos. Usa Chrome en Android con la app instalada.';
     btn.hidden = true; return;
   }
-  const tags = await reg.periodicSync.getTags().catch(() => []);
-  const activo = tags.includes(TAG_AVISO) && Notification.permission === 'granted';
-  btn.textContent = activo ? 'Probar aviso ahora' : 'Activar aviso diario';
-  el.textContent = activo
-    ? 'Activado: Android te avisará una vez al día entre las 7:00 y las 21:00, en cuanto despierte la app (no hay hora fija).'
-    : 'Te manda un resumen de vencidas, foco del día y próximos 7 días una vez al día.';
+  const reg = await navigator.serviceWorker.ready;
+  reg.periodicSync?.unregister?.('resumen-diario').catch(() => {});
+  const sub = await reg.pushManager.getSubscription();
+  if (sub && Notification.permission === 'granted') {
+    btn.textContent = 'Ver código / probar aviso';
+    el.textContent = 'Aviso activado en este móvil. Si aún no lo has hecho, pásale el código a Claude.';
+  } else {
+    btn.textContent = 'Activar aviso a las 8:00';
+    el.textContent = 'Cada mañana a las 8:00 (puede llegar hasta las 8:15) te avisa con vencidas, foco del día y próximos 7 días.';
+  }
 }
+
 async function activarAviso() {
   const permiso = await Notification.requestPermission();
   if (permiso !== 'granted') { toast('Sin permiso de notificaciones'); return; }
   const reg = await navigator.serviceWorker.ready;
-  const st = await navigator.permissions.query({ name: 'periodic-background-sync' }).catch(() => null);
-  if (st && st.state !== 'granted') {
-    toast('Instala la app primero (⋮ → Instalar aplicación) y ábrela desde el icono');
-    return;
-  }
-  try {
-    await reg.periodicSync.register(TAG_AVISO, { minInterval: 6 * 60 * 60 * 1000 });
-  } catch {
-    toast('Android no ha permitido el aviso. Abre la app desde el icono instalado y reintenta');
-    return;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    try {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(VAPID_PUBLICA) });
+    } catch { toast('No se pudo activar. Abre la app desde el icono instalado y reintenta'); return; }
   }
   copiaParaAviso();
   reg.active?.postMessage('probar-aviso');
-  toast('Aviso diario activado ✓');
-  estadoAviso();
+  const codigo = JSON.stringify(sub.toJSON());
+  $('#aviso-txt').value = codigo;
+  $('#aviso-codigo').hidden = false;
+  $('#aviso-estado').textContent = 'Te ha llegado un aviso de prueba. Copia este código y pégaselo a Claude (solo hace falta una vez):';
+  $('#m-aviso').textContent = 'Ver código / probar aviso';
 }
+$('#aviso-copiar').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('#aviso-txt').value); toast('Código copiado'); }
+  catch { $('#aviso-txt').select(); toast('Mantén pulsado el texto para copiarlo'); }
+});
 $('#m-aviso').addEventListener('click', activarAviso);
 $('#btn-menu').addEventListener('click', estadoAviso);
 

@@ -1,6 +1,6 @@
-// Service worker: app sin conexión + aviso diario con el resumen de tareas.
+// Service worker: app sin conexión + aviso de las 8:00 con el resumen de tareas.
 // Al cambiar cualquier archivo, sube VERSION para que los móviles se actualicen.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `mis-tareas-${VERSION}`;
 const DATOS = 'mis-tareas-datos';
 const ARCHIVOS = [
@@ -85,8 +85,9 @@ async function resumen(forzar) {
   if (!forzar) await cache.put('datos/ultimo-aviso', new Response(hoy));
 }
 
-self.addEventListener('periodicsync', e => {
-  if (e.tag === 'resumen-diario') e.waitUntil(resumen(false));
+// GitHub Actions manda un push vacío a las 8:00: aquí se monta el resumen con los datos del móvil
+self.addEventListener('push', e => {
+  e.waitUntil(resumen(true));
 });
 
 self.addEventListener('message', e => {
