@@ -4,6 +4,7 @@ App web instalable (PWA) para apuntar tareas dictando, con prioridades y una pan
 
 - 🎙️ **Dictado**: botón de micro (Chrome en Android) o el micro del teclado (iPhone).
 - 🧠 **Entiende prioridad y fecha** de lo que dices: *"revisar curva horno 2 alta para el viernes"*.
+- 📁 **Proyectos**: avance, pendientes y días de trabajo estimados; lo que escribes dentro de un proyecto va a ese proyecto.
 - 📋 **Hoy**: vencidas → foco del día (vence hoy + prioridad alta) → próximos 7 días → resto.
 - ✈️ Funciona **sin conexión**. Los datos se guardan **solo en el móvil** (localStorage).
 - 🔔 **Aviso a las 8:00** (menú `···` → *Activar aviso a las 8:00*): GitHub Actions manda cada mañana un toque vacío al móvil y la app monta el resumen con sus datos locales. Necesita el secreto `AVISO_CONFIG` (ver abajo).
@@ -17,6 +18,8 @@ App web instalable (PWA) para apuntar tareas dictando, con prioridades y una pan
 | `hoy`, `mañana`, `pasado mañana`, `el viernes`, `la semana que viene` | Fecha |
 | `el 20/11`, `el 15 de diciembre`, `el día 5`, `en 3 días`, `fin de mes` | Fecha |
 | `nota: …` | Todo lo que sigue va a notas |
+| `proyecto Línea 4` (al final) | Proyecto (si ya existe, aunque lo digas sin tildes, lo reconoce) |
+| `3 días eléctrico`, `… 2 días`, `duración 2 días` | Duración estimada |
 
 "Dar de alta proveedor" no se toma como prioridad: la palabra solo cuenta al final de la frase, antes de la fecha o tras "prioridad".
 

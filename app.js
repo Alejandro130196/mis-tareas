@@ -7,6 +7,7 @@ const $ = s => document.querySelector(s);
 
 let tareas = cargar();
 let tab = 'hoy';
+let proyectoAbierto = null;
 let editando = null;
 let deshacer = null;
 
@@ -50,11 +51,24 @@ const porFechaYPrio = (a, b) =>
 const porPrioYFecha = (a, b) =>
   ORDEN_P[a.prioridad] - ORDEN_P[b.prioridad] || (a.fecha || '9999').localeCompare(b.fecha || '9999') || a.creada - b.creada;
 
+// ---------- Proyectos ----------
+const plano = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+// En el orden en que se crearon (el de tu lista)
+const listaProyectos = () => [...new Set([...tareas].sort((a, b) => a.creada - b.creada).map(t => t.proyecto).filter(Boolean))];
+// Si el nombre dictado coincide con uno existente (sin tildes/mayúsculas), usa el existente
+function nombreProyecto(n) {
+  if (!n) return null;
+  const k = plano(n);
+  return listaProyectos().find(p => plano(p) === k) ||
+         listaProyectos().find(p => plano(p).includes(k) || k.includes(plano(p))) || n.trim();
+}
+const porOrden = (a, b) => a.creada - b.creada;
+
 // ---------- Render ----------
 const ICO_CHECK = '<svg viewBox="0 0 24 24"><path d="m9 16.2-3.5-3.5L4 14.2l5 5 11-11-1.5-1.5z"/></svg>';
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
-function itemHTML(t) {
+function itemHTML(t, enProyecto = false) {
   let vence = '';
   if (t.fecha && !t.hecha) {
     const n = difDias(t.fecha);
@@ -66,14 +80,14 @@ function itemHTML(t) {
     <button class="check" data-acc="check" aria-label="${t.hecha ? 'Reabrir' : 'Marcar como hecha'}">${ICO_CHECK}</button>
     <button class="cuerpo" data-acc="editar">
       <span class="t">${esc(t.titulo)}</span>
-      <span class="meta"><span class="pill">${NOMBRE_P[t.prioridad]}</span>${vence}${cerrada}${nota}</span>
+      <span class="meta"><span class="pill">${NOMBRE_P[t.prioridad]}</span>${t.proyecto && !enProyecto ? `<span class="proy">${esc(t.proyecto)}</span>` : ''}${t.duracion ? `<span>⏱ ${t.duracion} d</span>` : ''}${vence}${cerrada}${nota}</span>
     </button>
   </li>`;
 }
-function seccion(titulo, lista, clase = '') {
+function seccion(titulo, lista, clase = '', enProyecto = false) {
   if (!lista.length) return '';
   return `<section><h2>${titulo} <span class="n">· ${lista.length}</span></h2>
-    <ul class="lista ${clase}">${lista.map(itemHTML).join('')}</ul></section>`;
+    <ul class="lista ${clase}">${lista.map(t => itemHTML(t, enProyecto)).join('')}</ul></section>`;
 }
 
 function render() {
@@ -81,6 +95,7 @@ function render() {
   const hoy = hoyStr();
   { const f = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }); $('#fecha').textContent = f[0].toUpperCase() + f.slice(1); }
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab));
+  $('#entrada').placeholder = tab === 'proyectos' && proyectoAbierto ? `Añadir a ${proyectoAbierto}…` : 'Dicta o escribe una tarea…';
   let html = '';
 
   if (tab === 'hoy') {
@@ -97,7 +112,7 @@ function render() {
       html = `<div class="vacio"><strong>Nada pendiente</strong>Dicta o escribe una tarea abajo.</div>`;
     } else {
       const empezar = vencidas[0] || foco[0] || semana[0] || resto.sort(porPrioYFecha)[0];
-      html += `<div class="foco">Empieza por: <b>${esc(empezar.titulo)}</b></div>`;
+      html += `<div class="foco">Empieza por: <b>${esc(empezar.titulo)}</b>${empezar.proyecto ? ` <span class="sub">· ${esc(empezar.proyecto)}</span>` : ''}</div>`;
       html += seccion('⚠️ Vencidas', vencidas, 'vencidas');
       html += seccion('🎯 Foco de hoy', foco);
       html += seccion('📅 Próximos 7 días', semana);
@@ -111,6 +126,36 @@ function render() {
     if (!pend.length) html = `<div class="vacio"><strong>Sin tareas pendientes</strong></div>`;
     for (const p of ['alta', 'media', 'baja']) {
       html += seccion({ alta: '🔴 Alta', media: '🟡 Media', baja: '🟢 Baja' }[p], pend.filter(t => t.prioridad === p).sort(porFechaYPrio));
+    }
+  } else if (tab === 'proyectos' && proyectoAbierto) {
+    $('#titulo').innerHTML = `<button class="volver" data-ir="proyectos">‹ Proyectos</button>${esc(proyectoAbierto)}`;
+    const del = tareas.filter(t => t.proyecto === proyectoAbierto);
+    const p = del.filter(t => !t.hecha).sort(porOrden), h = del.filter(t => t.hecha).sort(porOrden);
+    const dias = p.reduce((s, t) => s + (t.duracion || 0), 0);
+    html += `<div class="foco">${p.length} pendiente${p.length === 1 ? '' : 's'} · ${h.length} hecha${h.length === 1 ? '' : 's'}${dias ? ` · ⏱ ≈ ${dias} días de trabajo` : ''}
+      <div class="barra"><span style="width:${del.length ? Math.round(h.length / del.length * 100) : 0}%"></span></div></div>`;
+    html += p.length ? seccion('Pendientes', p, '', true) : `<div class="vacio"><strong>Proyecto al día</strong>Añade tareas abajo; irán a este proyecto.</div>`;
+    html += seccion('Hechas', h, '', true);
+    html += `<section><button class="resto" data-acc-proy="renombrar">Renombrar proyecto ›</button></section>`;
+  } else if (tab === 'proyectos') {
+    $('#titulo').textContent = 'Proyectos';
+    const ps = listaProyectos();
+    if (!ps.length) {
+      html = `<div class="vacio"><strong>Sin proyectos</strong>Dicta "… proyecto Línea 4" o asigna un proyecto al editar una tarea.</div>`;
+    } else {
+      html = '<ul class="proyectos">' + ps.map(n => {
+        const del = tareas.filter(t => t.proyecto === n), p = del.filter(t => !t.hecha);
+        const venc = p.filter(t => t.fecha && t.fecha < hoy).length, alta = p.filter(t => t.prioridad === 'alta').length;
+        const dias = p.reduce((s, t) => s + (t.duracion || 0), 0);
+        const pct = Math.round((del.length - p.length) / del.length * 100);
+        return `<li><button class="proyecto" data-proy="${esc(n)}">
+          <span class="pn">${esc(n)}</span>
+          <span class="meta"><span>${p.length} pendiente${p.length === 1 ? '' : 's'}</span>${dias ? `<span>⏱ ${dias} d</span>` : ''}${alta ? `<span class="pill" data-p="alta">${alta} alta</span>` : ''}${venc ? `<span class="vence tarde">${venc} vencida${venc > 1 ? 's' : ''}</span>` : ''}</span>
+          <span class="barra"><span style="width:${pct}%"></span></span>
+        </button></li>`;
+      }).join('') + '</ul>';
+      const sin = pend.filter(t => !t.proyecto).length;
+      if (sin) html += `<p class="ayuda" style="margin:12px 4px">${sin} tarea${sin > 1 ? 's' : ''} sin proyecto (en Todas).</p>`;
     }
   } else {
     $('#titulo').textContent = 'Hechas';
@@ -133,10 +178,11 @@ function toast(txt, accion) {
 function anadir(texto) {
   const r = Parser.parse(texto);
   if (!r.titulo) return;
-  const t = { id: uid(), titulo: r.titulo, prioridad: r.prioridad, fecha: r.fecha, notas: r.notas, creada: Date.now(), hecha: null };
+  const proyecto = nombreProyecto(r.proyecto) || (tab === 'proyectos' && proyectoAbierto) || null;
+  const t = { id: uid(), titulo: r.titulo, prioridad: r.prioridad, fecha: r.fecha, notas: r.notas, proyecto, duracion: r.duracion, creada: Date.now(), hecha: null };
   tareas.push(t);
   guardar(); render();
-  const extra = [NOMBRE_P[t.prioridad], t.fecha ? textoFecha(t.fecha).toLowerCase() : null].filter(Boolean).join(' · ');
+  const extra = [NOMBRE_P[t.prioridad], t.proyecto, t.duracion ? `${t.duracion} d` : null, t.fecha ? textoFecha(t.fecha).toLowerCase() : null].filter(Boolean).join(' · ');
   toast(`Añadida (${extra})`, () => { tareas = tareas.filter(x => x.id !== t.id); guardar(); render(); });
 }
 
@@ -157,6 +203,9 @@ function abrirEditor(id) {
   document.querySelector(`input[name="e-prio"][value="${t.prioridad}"]`).checked = true;
   $('#e-fecha').value = t.fecha || '';
   $('#e-notas').value = t.notas || '';
+  $('#e-proyecto').value = t.proyecto || '';
+  $('#e-duracion').value = t.duracion || '';
+  $('#lista-proyectos').innerHTML = listaProyectos().map(p => `<option value="${esc(p)}">`).join('');
   $('#editor').showModal();
 }
 
@@ -168,6 +217,8 @@ $('#form-editor').addEventListener('submit', e => {
   editando.prioridad = document.querySelector('input[name="e-prio"]:checked').value;
   editando.fecha = $('#e-fecha').value || null;
   editando.notas = $('#e-notas').value.trim();
+  editando.proyecto = nombreProyecto($('#e-proyecto').value.trim()) || null;
+  editando.duracion = Math.max(0, parseFloat($('#e-duracion').value)) || null;
   guardar(); render();
 });
 $('#editor').addEventListener('close', () => { editando = null; });
@@ -182,14 +233,27 @@ $('#e-borrar').addEventListener('click', () => {
 
 $('#vista').addEventListener('click', e => {
   const ir = e.target.closest('[data-ir]');
-  if (ir) { tab = ir.dataset.ir; render(); scrollTo(0, 0); return; }
+  if (ir) { tab = ir.dataset.ir; proyectoAbierto = null; render(); scrollTo(0, 0); return; }
+  const pr = e.target.closest('[data-proy]');
+  if (pr) { proyectoAbierto = pr.dataset.proy; render(); scrollTo(0, 0); return; }
+  if (e.target.closest('[data-acc-proy="renombrar"]')) { renombrarProyecto(); return; }
   const b = e.target.closest('[data-acc]');
   if (!b) return;
   const id = b.closest('.tarea').dataset.id;
   if (b.dataset.acc === 'check') alternar(id); else abrirEditor(id);
 });
 document.querySelectorAll('.tabs button').forEach(b =>
-  b.addEventListener('click', () => { tab = b.dataset.tab; render(); scrollTo(0, 0); }));
+  b.addEventListener('click', () => { tab = b.dataset.tab; proyectoAbierto = null; render(); scrollTo(0, 0); }));
+$('#titulo').addEventListener('click', e => {
+  if (e.target.closest('.volver')) { proyectoAbierto = null; render(); scrollTo(0, 0); }
+});
+function renombrarProyecto() {
+  const viejo = proyectoAbierto;
+  const nuevo = (prompt('Nuevo nombre del proyecto', viejo) || '').trim();
+  if (!nuevo || nuevo === viejo) return;
+  tareas.forEach(t => { if (t.proyecto === viejo) t.proyecto = nuevo; });
+  proyectoAbierto = nuevo; guardar(); render();
+}
 $('#toast-btn').addEventListener('click', () => { deshacer?.(); deshacer = null; $('#toast').hidden = true; });
 
 $('#captura').addEventListener('submit', e => {

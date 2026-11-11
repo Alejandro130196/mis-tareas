@@ -103,6 +103,32 @@
       if (f) { fecha = ymd(f); texto = quitar(texto, m.index, m.index + m[0].length); break; }
     }
 
+    // Proyecto: "… proyecto línea 4" (hasta el final de la frase)
+    let proyecto = null;
+    {
+      const p = plano(texto);
+      const m = p.match(/[\s,](?:del?\s+|en\s+el\s+|para\s+el\s+)?proyecto\s*:?\s+/);
+      if (m) {
+        proyecto = texto.slice(m.index + m[0].length).replace(/[\s,.;]+$/, '').trim() || null;
+        texto = texto.slice(0, m.index) + ' ';
+        // la prioridad puede ir justo después del proyecto: "proyecto horno alta"
+        if (proyecto && !prioridad) {
+          const mp = plano(proyecto).match(/\s(alta|media|baja)$/);
+          if (mp) { prioridad = mp[1]; proyecto = proyecto.slice(0, mp.index).trim(); }
+        }
+      }
+    }
+
+    // Duración estimada: "3 días eléctrico", "eléctrico duración 3 días", "dura 2 días"
+    let duracion = null;
+    {
+      const p = plano(texto);
+      const m = p.match(new RegExp(`^\\s*${NUMRX}\\s+dias?\\s+(?:de\\s+)?`)) ||
+                p.match(new RegExp(`[\\s,](?:duracion|dura|lleva)\\s*:?\\s*(?:de\\s+)?${NUMRX}\\s+dias?\\b`)) ||
+                p.match(new RegExp(`[\\s,]${NUMRX}\\s+dias?(?=\\s*[,.]?\\s*(?:(?:alta|media|baja)\\s*[,.]?\\s*)?$)`));
+      if (m) { const n = numero(m[1]); if (n) { duracion = n; texto = quitar(texto, m.index, m.index + m[0].length); } }
+    }
+
     // "alta/media/baja" sueltas al final o tras una coma (para no romper "dar de alta")
     if (!prioridad) {
       const p = plano(texto);
@@ -115,7 +141,8 @@
     let titulo = texto.replace(/\s+([,.;])/g, '$1').replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, '').replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ');
     if (titulo) titulo = titulo[0].toUpperCase() + titulo.slice(1);
 
-    return { titulo, prioridad: prioridad || 'media', fecha, notas, prioridadDicha: !!prioridad };
+    if (proyecto) proyecto = proyecto[0].toUpperCase() + proyecto.slice(1);
+    return { titulo, prioridad: prioridad || 'media', fecha, notas, proyecto, duracion, prioridadDicha: !!prioridad };
   }
 
   const api = { parse, ymd };

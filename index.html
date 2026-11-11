@@ -49,6 +49,10 @@
       <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 5h2v2H4V5Zm4 0h12v2H8V5Zm-4 6h2v2H4v-2Zm4 0h12v2H8v-2Zm-4 6h2v2H4v-2Zm4 0h12v2H8v-2Z"/></svg>
       <span>Todas</span>
     </button>
+    <button role="tab" data-tab="proyectos" aria-selected="false">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2Z"/></svg>
+      <span>Proyectos</span>
+    </button>
     <button role="tab" data-tab="hechas" aria-selected="false">
       <svg viewBox="0 0 24 24" width="22" height="22"><path d="m9 16.2-3.5-3.5L4 14.2l5 5 11-11-1.5-1.5z"/></svg>
       <span>Hechas</span>
@@ -78,6 +82,15 @@
           <button type="button" class="link" id="e-sin-fecha">Sin fecha</button>
         </div>
       </label>
+      <div class="fila2">
+        <label>Proyecto
+          <input id="e-proyecto" type="text" list="lista-proyectos" placeholder="Sin proyecto" autocomplete="off">
+          <datalist id="lista-proyectos"></datalist>
+        </label>
+        <label class="corto">Duración (días)
+          <input id="e-duracion" type="number" min="0" step="0.5" inputmode="decimal" placeholder="—">
+        </label>
+      </div>
       <label>Notas
         <textarea id="e-notas" rows="3"></textarea>
       </label>

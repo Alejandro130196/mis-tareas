@@ -1,6 +1,6 @@
 // Service worker: app sin conexión + aviso de las 8:00 con el resumen de tareas.
 // Al cambiar cualquier archivo, sube VERSION para que los móviles se actualicen.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `mis-tareas-${VERSION}`;
 const DATOS = 'mis-tareas-datos';
 const ARCHIVOS = [
@@ -71,7 +71,7 @@ async function resumen(forzar) {
     if (foco.length) partes.push(`🎯 ${foco.length} de foco`);
     if (semana.length) partes.push(`📅 ${semana.length} esta semana`);
     titulo = `Mis tareas · ${pend.length} pendiente${pend.length > 1 ? 's' : ''}`;
-    cuerpo = (partes.length ? partes.join(' · ') + '\n' : '') + `Empieza por: ${empezar.titulo}`;
+    cuerpo = (partes.length ? partes.join(' · ') + '\n' : '') + `Empieza por: ${empezar.proyecto ? empezar.proyecto + ' · ' : ''}${empezar.titulo}`;
   }
 
   await self.registration.showNotification(titulo, {
