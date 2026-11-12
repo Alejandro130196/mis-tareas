@@ -1,6 +1,6 @@
 // Service worker: app sin conexión + aviso de las 8:00 con el resumen de tareas.
 // Al cambiar cualquier archivo, sube VERSION para que los móviles se actualicen.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE = `mis-tareas-${VERSION}`;
 const DATOS = 'mis-tareas-datos';
 const ARCHIVOS = [

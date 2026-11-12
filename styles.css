@@ -171,3 +171,5 @@ dialog input[type="text"], dialog input[type="number"] {
   font: inherit; font-size: 16px; color: var(--txt); background: var(--bg); border: 1px solid var(--line);
   border-radius: 10px; padding: 10px 12px; width: 100%;
 }
+.ayuda.error { color: var(--alta); font-weight: 500; }
+.menu-item:disabled { opacity: .5; }

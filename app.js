@@ -342,46 +342,79 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) { ta
 const VAPID_PUBLICA = 'BKIru1dn2qb7nzSBNHda-cCQRHbzsikBoADodr1EFTSqVHB_pXnXhlONJ07UEKKxIz7sEqcIdN7pZO96TSYaofM';
 const b64aBytes = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); s += '='.repeat((4 - s.length % 4) % 4); return Uint8Array.from(atob(s), c => c.charCodeAt(0)); };
 
+const AJUSTES_NOTIF = 'Ajustes del móvil → Aplicaciones → Mis tareas (o Chrome) → Notificaciones → Permitir. Luego vuelve y pulsa otra vez.';
+const conTiempo = (pr, ms) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error('tiempo')), ms))]);
+function avisoMsg(txt, error = false) {
+  const el = $('#aviso-estado');
+  el.textContent = txt;
+  el.classList.toggle('error', error);
+}
+
 async function estadoAviso() {
-  const el = $('#aviso-estado'), btn = $('#m-aviso'), caja = $('#aviso-codigo');
-  caja.hidden = true;
+  const btn = $('#m-aviso');
+  $('#aviso-codigo').hidden = true;
+  btn.hidden = false; btn.disabled = false;
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    el.textContent = 'Este navegador no permite avisos. Usa Chrome en Android con la app instalada.';
+    avisoMsg('Este navegador no permite avisos. Abre la app instalada desde Chrome en Android.', true);
     btn.hidden = true; return;
   }
-  const reg = await navigator.serviceWorker.ready;
-  reg.periodicSync?.unregister?.('resumen-diario').catch(() => {});
-  const sub = await reg.pushManager.getSubscription();
-  if (sub && Notification.permission === 'granted') {
-    btn.textContent = 'Ver código / probar aviso';
-    el.textContent = 'Aviso activado en este móvil. Si aún no lo has hecho, pásale el código a Claude.';
-  } else {
-    btn.textContent = 'Activar aviso a las 8:00';
-    el.textContent = 'Cada mañana a las 8:00 (puede llegar hasta las 8:15) te avisa con vencidas, foco del día y próximos 7 días.';
+  if (Notification.permission === 'denied') {
+    btn.textContent = 'Reintentar activar aviso';
+    avisoMsg('Las notificaciones están bloqueadas para esta app. Actívalas en: ' + AJUSTES_NOTIF, true);
+    return;
   }
+  try {
+    const reg = await conTiempo(navigator.serviceWorker.ready, 5000);
+    reg.periodicSync?.unregister?.('resumen-diario').catch(() => {});
+    const sub = await reg.pushManager.getSubscription();
+    if (sub && Notification.permission === 'granted') {
+      btn.textContent = 'Ver código / probar aviso';
+      avisoMsg('Aviso activado en este móvil. Si aún no lo has hecho, pásale el código a Claude.');
+      return;
+    }
+  } catch { /* se informa al pulsar */ }
+  btn.textContent = 'Activar aviso a las 8:00';
+  avisoMsg('Cada mañana a las 8:00 (puede llegar hasta las 8:15) te avisa con vencidas, foco del día y próximos 7 días.');
 }
 
 async function activarAviso() {
-  const permiso = await Notification.requestPermission();
-  if (permiso !== 'granted') { toast('Sin permiso de notificaciones'); return; }
-  const reg = await navigator.serviceWorker.ready;
-  let sub = await reg.pushManager.getSubscription();
-  if (!sub) {
-    try {
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(VAPID_PUBLICA) });
-    } catch { toast('No se pudo activar. Abre la app desde el icono instalado y reintenta'); return; }
+  const btn = $('#m-aviso');
+  btn.disabled = true;
+  avisoMsg('Activando…');
+  try {
+    let permiso = Notification.permission;
+    if (permiso !== 'granted') permiso = await Notification.requestPermission();
+    if (permiso !== 'granted') {
+      avisoMsg((permiso === 'denied' ? 'Las notificaciones están bloqueadas. ' : 'No has dado permiso de notificaciones. ') + 'Actívalas en: ' + AJUSTES_NOTIF, true);
+      return;
+    }
+    let reg;
+    try { reg = await conTiempo(navigator.serviceWorker.ready, 8000); }
+    catch { avisoMsg('La app no ha terminado de instalarse. Ciérrala del todo, ábrela con conexión a internet y reintenta.', true); return; }
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      try {
+        sub = await conTiempo(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(VAPID_PUBLICA) }), 15000);
+      } catch (e) {
+        avisoMsg(`No se pudo registrar el aviso (${e.name || e.message}). Comprueba que tienes internet y que abres la app desde el icono instalado, y reintenta.`, true);
+        return;
+      }
+    }
+    copiaParaAviso();
+    reg.active?.postMessage('probar-aviso');
+    $('#aviso-txt').value = JSON.stringify(sub.toJSON());
+    $('#aviso-codigo').hidden = false;
+    avisoMsg('Te debería llegar un aviso de prueba. Copia este código y pégaselo a Claude (solo hace falta una vez):');
+    btn.textContent = 'Ver código / probar aviso';
+  } catch (e) {
+    avisoMsg(`Error inesperado: ${e.message || e}. Mándale una captura a Claude.`, true);
+  } finally {
+    btn.disabled = false;
   }
-  copiaParaAviso();
-  reg.active?.postMessage('probar-aviso');
-  const codigo = JSON.stringify(sub.toJSON());
-  $('#aviso-txt').value = codigo;
-  $('#aviso-codigo').hidden = false;
-  $('#aviso-estado').textContent = 'Te ha llegado un aviso de prueba. Copia este código y pégaselo a Claude (solo hace falta una vez):';
-  $('#m-aviso').textContent = 'Ver código / probar aviso';
 }
 $('#aviso-copiar').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('#aviso-txt').value); toast('Código copiado'); }
-  catch { $('#aviso-txt').select(); toast('Mantén pulsado el texto para copiarlo'); }
+  try { await navigator.clipboard.writeText($('#aviso-txt').value); $('#aviso-copiar').textContent = 'Copiado ✓'; }
+  catch { $('#aviso-txt').select(); avisoMsg('Mantén pulsado el texto para copiarlo.'); }
 });
 $('#m-aviso').addEventListener('click', activarAviso);
 $('#btn-menu').addEventListener('click', estadoAviso);
